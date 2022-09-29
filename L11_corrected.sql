@@ -128,3 +128,6 @@ select * ,
 				s_bal_1 - s_bal_2
 
 from #sumDynamik
+
+
+test code !!!!
