@@ -5,6 +5,7 @@ stateContract- строка 1 символ
 lim - число, размерность 13 с точностью до 2 знаков
 gr - строка 10 символов
 exAge - int*/
+--test Rodion
 
 CREATE TABLE DD010183VVV.mytCards(
 	                     PRIMARY KEY (ldap)
