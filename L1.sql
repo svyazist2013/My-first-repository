@@ -1,6 +1,7 @@
 /*Написать запрос, который из таблицы rm.tcards выведет на экран все номера карт, и референсы договоров по Вашему clientid. 
 Названия полей номера карты и рефа договора - pan и refcontract соответственно*/
 
+--Rodion commit after clone
 SELECT pan,
        refcontract
   FROM rm.tcards
