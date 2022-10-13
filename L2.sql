@@ -8,6 +8,7 @@ GPH - флажок сотрудника гпх, два значения 1 или
 -------------------------
 первичный ключ на таблице - ldap, учесть что в таблице не может быть значений null, в любой из колонок*/
 --Rodion comment
+--test notification
 
 CREATE TABLE DD010183VVV.myFirstTable(
 	                     PRIMARY KEY (ldap)
