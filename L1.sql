@@ -74,6 +74,7 @@ SELECT TOP 3
  commit;
 
 --test 2 github
+-- notifications after change
 
 
 
