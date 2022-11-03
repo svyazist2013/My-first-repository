@@ -1,16 +1,16 @@
 /* Задача №1
 
 1. Выбрать клиентов из GREEN зоны по геолокации, ИСКЛЮЧИТЬ из них:
- 	* клиентов с ОКПО работодателя из зоны BURGUNDY
- 	* клиентов с цветом продукта BURGUNDY
+  * клиентов с ОКПО работодателя из зоны BURGUNDY
+  * клиентов с цветом продукта BURGUNDY
 2. Оставить в выборке только клиентов с группами риска Very low risk/Low risk/Medium
 3. Оставить в выборке только клиентов с наличием расчетных веток из категории:
- 	ZARPL,DEPOSIT,SCORE, FOUNDERS, POSHIST,TRANS
+  ZARPL,DEPOSIT,SCORE, FOUNDERS, POSHIST,TRANS
 4. Для сотрудников применяем только условия по гео зоне GREEN, остальные отсечения к ним не применять.
 5. для клиентов с цветом продукта RED, либо цветом ОКПО работодателя RED 
-	- обрезать сумму предрасчета до размера 2 средних З/П.
-6. 	Клиентам, работающих в сфере 'Будівництво та нерухомість'
-	- обрезать сумму предрасчета до размера 2 средних З/П.
+  - обрезать сумму предрасчета до размера 2 средних З/П.
+6.  Клиентам, работающих в сфере 'Будівництво та нерухомість'
+  - обрезать сумму предрасчета до размера 2 средних З/П.
 7. Посчитать по пулу клиентов из выборки:
    * кол-во клиентов
    * сумму установленных лимитов
@@ -29,104 +29,102 @@ P.S Что откуда брать:
 табл SERVICELIM.zpOkpoColor
 поля zone_okpo, REP_PROFIL_NAME
 4. Группу риска брать из табл.
-	для розницы: SERVICELIM.SRVLIM_ratingMatrix 
-	для вип клиентов: SERVICELIM.SRVLIM_ratingMatrix_vip
-	* группа риска в поле riskLevel, расшифровка значений в табл ref.trefRiskLevel (поле riskLevelName)
-	** признак VIP брать из табл rm.tclientInfo, поле vip = 1
+  для розницы: SERVICELIM.SRVLIM_ratingMatrix 
+  для вип клиентов: SERVICELIM.SRVLIM_ratingMatrix_vip
+  * группа риска в поле riskLevel, расшифровка значений в табл ref.trefRiskLevel (поле riskLevelName)
+  ** признак VIP брать из табл rm.tclientInfo, поле vip = 1
 5. наличие расчетной ветки смотреть по табл SERVICELIM.B_DAY00_ALL(ключ ид клиента+кардгруппа)
-	справочник кардгрупп/категорий в ref.tRefTypeComment,
-	поле type = cardgroup
-	поле over_type - категория
+  справочник кардгрупп/категорий в ref.tRefTypeComment,
+  поле type = cardgroup
+  поле over_type - категория
 6. размер средней ЗП:
-	табл SERVICELIM.tcredLoadProfit
-	поле AvgZpObj
+  табл SERVICELIM.tcredLoadProfit
+  поле AvgZpObj
 7. Признак сотрудника проверяем по наличию расчетной ветки 
-	cardgroup in ('SOTR', 'SOTR_FST')
-	где смотреть расчетные ветки - описано в п.5
+  cardgroup in ('SOTR', 'SOTR_FST')
+  где смотреть расчетные ветки - описано в п.5
 
 */
 
 /*1. Выбрать клиентов из GREEN зоны по геолокации, ИСКЛЮЧИТЬ из них:
- 	* клиентов с ОКПО работодателя из зоны BURGUNDY
- 	* клиентов с цветом продукта BURGUNDY
+  * клиентов с ОКПО работодателя из зоны BURGUNDY
+  * клиентов с цветом продукта BURGUNDY
 */
 SELECT clientid                AS ID_CL
      , newlim_CutHistAge       AS new_lim
-	 , limcurr                 AS lim_curr
-	 , refcontract             AS ref_contract
-	 , cardgroup               AS card_group
+     , limcurr                 AS lim_curr
+     , refcontract             AS ref_contract
+     , cardgroup               AS card_group
+     , cast(0 as bit)          as sotr --флаг для сотрудников     
  INTO #client_GREEN
  FROM SERVICELIM.SRVLIM_CLIENT AS T1
 WHERE T1.newlim_CutHistAge > 0
-  AND T1.clientid IN (SELECT clientid
-                        FROM ref.trefZpProjType AS T2
-                       WHERE FINAL_COLOR = 'GREEN' 
-					     AND PROD_COLOR != 'BURGUNDY'
-                     )
-;					 
-COMMIT;			
+      AND T1.clientid IN (SELECT clientid
+                            FROM LPAR1.LOCATION_ZONE_DATA_RP AS T2
+                           WHERE FINAL_COLOR = 'GREEN' 
+                                 AND PROD_COLOR != 'BURGUNDY'
+                         )
+;          
+COMMIT;     
 
 create HG index ClientID_HG on #client_GREEN(clientid);       commit;
 create HG index refcontract_HG on #client_GREEN(refcontract); commit;
 
-SELECT *
-  INTO #client_OKPO
-  FROM #client_GREEN AS T1
- WHERE T1.clientid NOT IN (SELECT clientid
-                             FROM SERVICELIM.zpOkpoColor AS T2
-                            WHERE zone_okpo = 'BURGUNDY' 
-                          )
+update #client_GREEN as t1 
+set t1.sotr = 1
+from #client_GREEN as t1
+join SERVICELIM.B_DAY00_ALL as t2 on t1.clientid = t2.clientid 
+                                  and t2.cardgroup in ('SOTR', 'SOTR_FST')
 ;
-COMMIT;	
+commit;
 
-create HG index ClientID_HG    on #client_OKPO(clientid);    commit;
-create HG index refcontract_HG on #client_OKPO(refcontract); commit;
+delete #client_GREEN
+  FROM #client_GREEN AS T1
+  join SERVICELIM.zpOkpoColor as t2 on t1.clientid = t2.clientid
+                                      and t2.zone_okpo = 'BURGUNDY' 
+where t1.sotr = 0
+;
+COMMIT; 
 
 /*2. Оставить в выборке только клиентов с группами риска Very low risk/Low risk/Medium
 */
 
-SELECT *
-  INTO #client_ratingMatrix 
-  FROM #client_OKPO AS T1
- WHERE T1.clientid IN (SELECT clientid
-                         FROM SERVICELIM.SRVLIM_ratingMatrix AS T2
-                        WHERE riskLevel IN (SELECT riskLevel
-                                              FROM ref.trefRiskLevel AS T3
-                                             WHERE riskLevelName IN ('Very low risk', 'Low risk', 'Medium risk')
-							               )
-                      )
+delete #client_GREEN
+  FROM #client_GREEN AS T1
+ left join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
+ join ref.trefRiskLevel AS T3 on t2.riskLevel = t3.riskLevel
+                              and t3.riskLevelName IN ('Very low risk', 'Low risk', 'Medium risk')
+ where t2.clientid is null and t1.sotr = 0
 ;
-COMMIT;	
-
-create HG index ClientID_HG    on #client_ratingMatrix(clientid);    commit;
-create HG index refcontract_HG on #client_ratingMatrix(refcontract); commit;
-
+commit;
 
 /*3. Оставить в выборке только клиентов с наличием расчетных веток из категории:
- 	ZARPL,DEPOSIT,SCORE, FOUNDERS, POSHIST,TRANS
+  ZARPL,DEPOSIT,SCORE, FOUNDERS, POSHIST,TRANS
 */
 
-SELECT *
-  INTO #client_cardgroup 
-  FROM #client_ratingMatrix AS T1
- WHERE T1.clientid IN (SELECT clientid
-                         FROM SERVICELIM.B_DAY00_ALL AS T2
-                        WHERE cardgroup IN (SELECT TYPE
-                                              FROM ref.tRefTypeComment AS T3
-                                             WHERE over_type IN ('ZARPL', 'DEPOSIT', 'SCORE', 'FOUNDERS', 'POSHIST', 'TRANS')
-							               )
-                      )
+delete #client_GREEN
+  FROM #client_GREEN AS T1
+ left join SERVICELIM.B_DAY00_ALL AS T2 on t1.clientid = t2.clientid
+                                        and t2.cardgroup IN (
+                                                      SELECT TYPE
+                                                      FROM ref.tRefTypeComment AS T3
+                                                     WHERE over_type IN (
+                                                                          'ZARPL', 
+                                                                          'DEPOSIT', 
+                                                                          'SCORE', 
+                                                                          'FOUNDERS', 
+                                                                          'POSHIST', 
+                                                                          'TRANS')
+                                                )
+ where t2.clientid is null and t1.sotr = 0
 ;
-COMMIT;
-
-create HG index ClientID_HG    on #client_cardgroup(clientid);    commit;
-create HG index refcontract_HG on #client_cardgroup(refcontract); commit;
+commit;
 
 4. Для сотрудников применяем только условия по гео зоне GREEN, остальные отсечения к ним не применять.
 5. для клиентов с цветом продукта RED, либо цветом ОКПО работодателя RED 
-	- обрезать сумму предрасчета до размера 2 средних З/П.
-6. 	Клиентам, работающих в сфере 'Будівництво та нерухомість'
-	- обрезать сумму предрасчета до размера 2 средних З/П.
+  - обрезать сумму предрасчета до размера 2 средних З/П.
+6.  Клиентам, работающих в сфере 'Будівництво та нерухомість'
+  - обрезать сумму предрасчета до размера 2 средних З/П.
 7. Посчитать по пулу клиентов из выборки:
    * кол-во клиентов
    * сумму установленных лимитов
