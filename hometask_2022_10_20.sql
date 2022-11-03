@@ -55,7 +55,7 @@ SELECT clientid                AS ID_CL
      , limcurr                 AS lim_curr
      , refcontract             AS ref_contract
      , cardgroup               AS card_group
-     , cast(0 as bit)          as sotr --флаг для сотрудников     
+     , cast(0 as bit)          as sotr --флаг для сотрудников и другие флаги по аналогии    
  INTO #client_GREEN
  FROM SERVICELIM.SRVLIM_CLIENT AS T1
 WHERE T1.newlim_CutHistAge > 0
