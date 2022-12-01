@@ -50,14 +50,17 @@ P.S Что откуда брать:
   * клиентов с ОКПО работодателя из зоны BURGUNDY
   * клиентов с цветом продукта BURGUNDY
 */
-SELECT clientid                AS ID_CL
-     , refcontract             AS ref_contract
+SELECT clientid  
+      , cast(null as int) as riskLevel
+      , cast(null as varchar(50)) as riskLevelName
+     , refcontract  
      , limcurr                 AS lim_curr
      , newlim_CutHistAge       AS new_lim
-     , newlim_CutZoneProd_Okpo 
+     , cast(0 as numeric(13,2)) as newlim_CutZoneProd_Okpo 
      , cardgroup               AS card_group
      , cast(0 as bit)          as sotr --флаг для сотрудников и другие флаги по аналогии  
-     , cast(0 as bit)          as red_zone_prod\okpo_OR_risk_KVED --флаг для продукта, окпо либо квэд
+     , cast(0 as bit)          as red_zone_prod_okpo_OR_risk_KVED --флаг для продукта, окпо либо квэд
+into #client_GREEN
  FROM SERVICELIM.SRVLIM_CLIENT AS T1
 WHERE T1.newlim_CutHistAge > 0
   AND T1.clientid IN (SELECT clientid
@@ -80,19 +83,45 @@ update #client_GREEN as t1
 commit;
 
 update #client_GREEN as t1 
-   set t1.red_zone_prod\okpo_OR_risk_KVED = 1
+   set t1.red_zone_prod_okpo_OR_risk_KVED = 1
   from #client_GREEN as t1
   join LPAR1.LOCATION_ZONE_DATA_RP AS T2 on t1.clientid = t2.clientid 
                                         AND PROD_COLOR = 'RED'
 ;
 commit;
 
+select top 5 t1.*, t2.zone_okpo, t2.REP_PROFIL_NAME
+into #tmp
+from #client_GREEN as t1
+  join SERVICELIM.zpOkpoColor  AS T2 on t1.clientid = t2.clientid 
+                                    AND T2.zone_okpo = 'RED'
+;
+commit;
+
+insert into #tmp
+  select top 5 t1.*, t2.zone_okpo, t2.REP_PROFIL_NAME
+from #client_GREEN as t1
+  join SERVICELIM.zpOkpoColor  AS T2 on t1.clientid = t2.clientid 
+                                    AND T2.REP_PROFIL_NAME = 'Будівництво та нерухомість'
+;
+commit;
+
 update #client_GREEN as t1 
-   set t1.red_zone_prod\okpo_OR_risk_KVED = 1
+   set t1.red_zone_prod_okpo_OR_risk_KVED = 1
   from #client_GREEN as t1
   join SERVICELIM.zpOkpoColor  AS T2 on t1.clientid = t2.clientid 
                                     AND T2.zone_okpo = 'RED'
-                                     OR T2.REP_PROFIL_NAME = 'Будівництво та нерухомість'
+                                     --OR T2.REP_PROFIL_NAME = 'Будівництво та нерухомість') 
+                                     -- без скобок происходит связка по условию  'Будівництво та нерухомість' без проверки равенства clientid
+                                     --(декартово произведение, связка всего со всеми) 
+;
+commit;
+
+update #client_GREEN as t1 
+   set t1.red_zone_prod_okpo_OR_risk_KVED = 1
+  from #client_GREEN as t1
+  join SERVICELIM.zpOkpoColor  AS T2 on t1.clientid = t2.clientid 
+                                    AND T2.REP_PROFIL_NAME = 'Будівництво та нерухомість'
 ;
 commit;
 
@@ -107,14 +136,43 @@ COMMIT;
 /*2. Оставить в выборке только клиентов с группами риска Very low risk/Low risk/Medium
 */
 
+
+update #client_GREEN as t1 
+   set t1.riskLevel = t2.riskLevel
+  from #client_GREEN as t1
+  join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
+;
+commit;
+
+update #client_GREEN as t1 
+   set t1.riskLevelName = t3.riskLevelName
+  from #client_GREEN as t1
+ join ref.trefRiskLevel AS T3 on t1.riskLevel = t3.riskLevel
+;
+commit;
+
 delete #client_GREEN
+  FROM #client_GREEN AS T1
+ left join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
+                                                and t2.riskLevel in (
+                                                  select a.riskLevel from ref.trefRiskLevel as a 
+                                                  where a.riskLevelName IN ('Very low risk', 'Low risk', 'Medium risk')
+                                              )
+ where  t2.clientid is null 
+        and t1.sotr = 0
+;
+commit;
+
+--не удалил плохих клиентов
+/*delete #client_GREEN
   FROM #client_GREEN AS T1
  left join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
  join ref.trefRiskLevel AS T3 on t2.riskLevel = t3.riskLevel
                               and t3.riskLevelName IN ('Very low risk', 'Low risk', 'Medium risk')
- where t2.clientid is null and t1.sotr = 0
+ where  t2.clientid is null 
+        and t1.sotr = 0
 ;
-commit;
+commit;*/
 
 /*3. Оставить в выборке только клиентов с наличием расчетных веток из категории:
   ZARPL,DEPOSIT,SCORE, FOUNDERS, POSHIST,TRANS
@@ -157,7 +215,7 @@ SELECT top 10 *
      set newlim_CutZoneProd_Okpo = (T2.AvgZpObj * 2)
     from #client_GREEN as t1
     join SERVICELIM.tcredLoadProfit  AS T2 ON t1.clientid = t2.clientid 
-                                    AND T1.red_zone_prod\okpo_OR_risk_KVED = 1
+                                    AND T1.red_zone_prod_okpo_OR_risk_KVED = 1
                                      
 ;
 commit;
@@ -165,7 +223,7 @@ commit;
 update #client_GREEN as t1 
      set newlim_CutZoneProd_Okpo = T1.new_lim
     from #client_GREEN as t1
-   WHERE T1.red_zone_prod\okpo_OR_risk_KVED = 0
+   WHERE T1.red_zone_prod_okpo_OR_risk_KVED = 0
                                      
 ;
 commit;
@@ -178,7 +236,8 @@ commit;
    * сумму предрасчета с учетом обрезки до 2 З/П*/
 
 
-   SELECT COUNT (ID_CL)    AS 'кол-во клиентов'
+   SELECT COUNT (clientid)    AS 'кол-во клиентов'
         , SUM   (lim_curr) AS 'сумму установленных лимитов'
         , SUM   (new_lim)  AS 'сумму предрасчета на сейчас'
         , SUM   (newlim_CutZoneProd_Okpo)  AS 'сумму предрасчета с учетом обрезки до 2 З/П'
+  from #client_GREEN
