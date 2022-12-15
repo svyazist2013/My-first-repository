@@ -151,6 +151,30 @@ update #client_GREEN as t1
 ;
 commit;
 
+
+/*
+--БЫЛО
+delete #client_GREEN
+  FROM #client_GREEN AS T1
+ left join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
+ join ref.trefRiskLevel AS T3 on t2.riskLevel = t3.riskLevel
+                              and t3.riskLevelName IN ('Very low risk', 'Low risk', 'Medium risk')
+ where t2.clientid is null and t1.sotr = 0
+
+ --
+ count() = 0
+
+ не удаляет ввиду последовательности выполнения частей запроса
+ 1) отрабатывают join 
+ 2) отрабатывает where
+
+ 1) пересечение с табл матрицы.
+ 2) Оставляем только клиентов в нужных группах риска
+ 3) проверяем клиентов с clientid is null , таких нет. Т.к. все клиенты 'Very low risk', 'Low risk', 'Medium risk'
+  присутствуют в табл матрицы.
+;
+commit;*/
+
 delete #client_GREEN
   FROM #client_GREEN AS T1
  left join SERVICELIM.SRVLIM_ratingMatrix AS T2 on t1.clientid = t2.clientid
